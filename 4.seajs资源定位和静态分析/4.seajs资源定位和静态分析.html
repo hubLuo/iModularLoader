@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<title>Document</title>
+</head>
+<body>
+   <script type="text/javascript" src="../js/iSea.js"></script>
+   <script type="text/javascript">
+   //资源定位  webpack 
+   seajs.config({
+     alias: {
+       'a': './a',   //配置模块的短名称   (app) (/a.js)
+       'b': './b'
+     },
+     paths:{      //路径的短名称        //paths[app]  
+      "app":"common/js"
+     }
+   });
+
+   /*
+   
+    data.alias =  {
+       'a': './a.js',   //配置模块的短名称   data.alias[a]   './a.js'   './b.js'
+       'b': './b.js'
+     }  
+  */
+   //data.paths    配置优先
+
+   //初始化    根目录   唯一的主模块  依赖项
+   seajs.use(['a','b'],function(a,b){    //alias   key ?
+   	   console.log(a)
+       console.log(b)
+   	   console.log("come in");
+   });
+
+
+   </script>
+</body>
+</html>

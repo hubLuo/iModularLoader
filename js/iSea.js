@@ -28,6 +28,9 @@
         isFunction:function(obj){
             return toString.call(obj) === "[object Function]";
         },
+        isString:function(obj){
+            return toString.call(obj) === "[object String]";
+        },
         //接口
         use:function(ids, callback){
             Module.preload(function(){
@@ -47,6 +50,28 @@
                 document.body.removeChild(node);   //定义a模块  callback怎么获取
                 callback();
             }
+        },
+        //用于资源定位的短名称配置
+        history:{},
+        config:function(options){
+            var curr;
+            for( var key in options ){
+                curr =  options[key];
+                //记录配置
+                seajs.history[key] = seajs.history[key] || [];
+                seajs.history[key].push(curr);
+
+                seajs[key] = curr;   //seajs.alias  seajs.paths
+            }
+        },
+        //解析路径（定义时候的名称，uri 根目录）获取对应模块的绝对路径地址
+        resolve: function( id, uri ){
+            if(!id)return "";
+            //是否是个别名
+            id = resolve.parseAlias(id);    //检测是否有别名
+            id = resolve.parsePaths(id);    // 检测是否有路径别名 依赖模块中引包的模块路径地址 require("app/c");
+            id = resolve.normalize(id);     //检测是否添加后缀
+            return resolve.addBase(id, uri);   //添加根目录
         }
     };
     //模块缓存
@@ -106,8 +131,8 @@
             var deps;
             if(seajs.isFunction(factory)){
                 //调用toString方法，正则解析依赖项
-                //本版本简化，默认给空数组
-                deps = [];   //["./c,"./d"]
+                //deps = [];   //["./c,"./d"]
+                deps =parseDependencies(factory.toString());   //静态分析
             }
             //存储当前模块的信息
             var meta = {
@@ -231,7 +256,7 @@
     }(Module);
 
 
-    //3.执行使用模块回调
+    //3.生命周期：执行使用模块回调
     ~function(Module){
         Module.prototype.exec = function(){
             var mod = this;
@@ -262,6 +287,92 @@
             return exports;
         }
     }(Module);
+
+    //seajs依赖加载静态分析方法；
+    var parseDependencies=function(){
+        var REQUIRE_RE = /"(?:\\"|[^"])*"|'(?:\\'|[^'])*'|\/\*[\S\s]*?\*\/|\/(?:\\\/|[^\/\r\n])+\/(?=[^\/])|\/\/.*|\.\s*require|(?:^|[^$])\brequire\s*\(\s*(["'])(.+?)\1\s*\)/g
+        var SLASH_RE = /\\\\/g
+
+        function parseDependencies(code) {
+            var ret = []
+
+            code.replace(SLASH_RE, "")
+                .replace(REQUIRE_RE, function(m, m1, m2) {
+                    if (m2) {
+                        ret.push(m2)
+                    }
+                })
+
+            return ret
+        }
+        return parseDependencies;
+    }();
+
+    //资源定位：路径/模块短名称配置
+    var resolve=function(){
+        //是否使用了别名
+        function parseAlias(id){  //a  b
+            var alias = seajs.alias;  //配置
+            return alias && seajs.isString(alias[id]) ? alias[id] : id;
+        }
+
+        //不能以"/" ":"开头  结尾必须是一个"/" 后面跟随任意字符至少一个
+        var PATHS_RE = /^([^\/:]+)(\/.+)$/;   //([^\/:]+)   路径的短名称配置
+        // 是否有路径短名称
+        function parsePaths( id ){   //
+            var paths = seajs.paths,m;  //配置
+            if(paths && (m = id.match(PATHS_RE)) && seajs.isString(paths[m[1]])){
+                id = paths[m[1]] + m[2]
+            }
+            return id;
+        }
+
+        function normalize(path){
+            var last = path.length-1;
+            var lastC = path.charAt(last);
+            //".js" 6-4
+            return (lastC === "/" || path.substring(last-2) === ".js") ? path : path+".js";
+
+        }
+
+        function addBase( id, uri ){
+            //? ./  ../    app/c   match(/[^?]*\//)[0];
+            var result;
+            if(id.charAt(0) === "."){
+                result = realpath((uri ? uri.match(/[^?]*\//)[0] : seajs.cwd)+id);
+            }else{
+                result = seajs.cwd+id;
+            }
+            return result;
+        }
+
+        var DOT_RE = /\/.\//g;   // "/./" => "/"
+        var DOUBLE_DOT_RE = /\/[^/]+\/\.\.\//;
+        var DOUBLE_SLASH_RE = /([^:/])\/\//g;
+        //规范路径
+        function realpath(path){
+
+            // /a/b/./c/./d ==> /a/b/c/d
+            path = path.replace(DOT_RE, "/")
+
+            // a/b/c/../../d  ==>  a/b/../d  ==>  a/d
+            while (path.match(DOUBLE_DOT_RE)) {
+                path = path.replace(DOUBLE_DOT_RE, "/")
+            }
+
+            // a//b/c  ==>  a/b/c
+            path = path.replace(DOUBLE_SLASH_RE, "$1/")
+
+            return path;
+        }
+
+        return {
+            parseAlias:parseAlias,    //检测是否有别名
+            parsePaths:parsePaths,    // 检测是否有路径别名 依赖模块中引包的模块路径地址 require("app/c");
+            normalize:normalize,     //检测是否添加后缀
+            addBase:addBase
+        }
+    }();
 
     return seajs;
 });
